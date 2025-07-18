@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "npm run generate && next dev",
-    "build": "NEXT_IGNORE_TYPE_ERRORS=true next build",
+    "build": "npm run migrate && npm run seed && NEXT_IGNORE_TYPE_ERRORS=true next build",
+    "migrate": "prisma migrate deploy",
+    "seed": "prisma db seed",
     "postinstall": "prisma generate --no-engine",
     "start": "next start",
     "lint": "next lint",
