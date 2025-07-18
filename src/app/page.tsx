@@ -1,6 +1,11 @@
 import Image from "next/image";
+import prisma from "../../lib/prisma";
 
-export default function Home() {
+export default async function Home() {
+  const players = await prisma.player.findMany();
+
+  console.log("🚀 ~ page.tsx:7 ~ Home ~ players:", players);
+
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
