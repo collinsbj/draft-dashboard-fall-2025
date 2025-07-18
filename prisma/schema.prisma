@@ -1,0 +1,58 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Player {
+  id                        Int     @id @default(autoincrement())
+  rookie                    Boolean?
+  selected                  Boolean?
+  taken                     Boolean?
+  bucket                    String?
+  group                     Int?
+  firstName                 String?
+  lastName                  String?
+  staceyNotes               String?
+  laurenNotes               String?
+  bjNotes                   String?
+  notes                     String?
+  height                    String?
+  jerseySize                String?
+  pronouns                  String?
+  womens                    Boolean?
+  offDefCaptainExperience   String?
+  offDefCaptainInterest     String?
+  socialCaptainInterest     String?
+  ngffl                     Boolean?
+  speed                     Int?
+  agility                   Int?
+  handEyeCoordination       Int?
+  competitiveness           Int?
+  footballExperience        Int?
+  offensiveKnowledge        Int?
+  defensiveKnowledge        Int?
+  totalScore                Int?
+  qb                        String?
+  blocker                   String?
+  wr                        String?
+  slot                      String?
+  rusher                    String?
+  safety                    String?
+  corner                    String?
+  linebacker                String?
+  missingWeeks              Boolean?
+  whichWeeks                String?
+  additionalContext         String?
+  otherExperience           String?
+}
