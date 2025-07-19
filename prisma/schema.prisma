@@ -16,9 +16,10 @@ datasource db {
 
 model Player {
   id                        Int     @id @default(autoincrement())
-  rookie                    Boolean?
-  selected                  Boolean?
-  taken                     Boolean?
+  favorite                  Boolean? @default(false)
+  rookie                    Boolean? @default(false)
+  selected                  Boolean? @default(false)
+  taken                     Boolean? @default(false)
   bucket                    String?
   group                     Int?
   firstName                 String?
@@ -33,8 +34,8 @@ model Player {
   womens                    Boolean?
   offDefCaptainExperience   String?
   offDefCaptainInterest     String?
-  socialCaptainInterest     String?
-  ngffl                     Boolean?
+  socialCaptainInterest     Boolean? @default(false)
+  ngffl                     Boolean? @default(false)
   speed                     Int?
   agility                   Int?
   handEyeCoordination       Int?
@@ -51,7 +52,7 @@ model Player {
   safety                    String?
   corner                    String?
   linebacker                String?
-  missingWeeks              Boolean?
+  missingWeeks              Boolean? @default(false)
   whichWeeks                String?
   additionalContext         String?
   otherExperience           String?
