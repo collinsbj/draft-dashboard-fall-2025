@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "npm run generate && next dev",
-    "build": "npm run generate && npm run migrate && npm run seed && NEXT_IGNORE_TYPE_ERRORS=true next build",
+    "build": "npm run generate && npm run migrate && NEXT_IGNORE_TYPE_ERRORS=true next build",
     "migrate": "prisma migrate deploy",
     "seed": "prisma db seed",
     "postinstall": "prisma generate",
@@ -18,12 +18,18 @@
   "dependencies": {
     "@prisma/client": "^6.12.0",
     "@prisma/extension-accelerate": "^2.0.2",
+    "@radix-ui/react-checkbox": "^1.3.2",
+    "@radix-ui/react-select": "^2.2.5",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@tanstack/react-query": "^5.83.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.525.0",
     "next": "15.4.1",
+    "next-themes": "^0.4.6",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
