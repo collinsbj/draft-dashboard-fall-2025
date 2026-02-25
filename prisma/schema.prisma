@@ -5,55 +5,137 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
   output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
-model Player {
-  id                        Int     @id @default(autoincrement())
-  favorite                  Boolean? @default(false)
-  rookie                    Boolean? @default(false)
-  selected                  Boolean? @default(false)
-  taken                     Boolean? @default(false)
-  bucket                    String?
-  group                     Int?
-  firstName                 String?
-  lastName                  String?
-  staceyNotes               String?
-  laurenNotes               String?
-  bjNotes                   String?
-  notes                     String?
-  height                    String?
-  jerseySize                String?
-  pronouns                  String?
-  womens                    Boolean?
-  offDefCaptainExperience   String?
-  offDefCaptainInterest     String?
-  socialCaptainInterest     Boolean? @default(false)
-  ngffl                     Boolean? @default(false)
-  speed                     Int?
-  agility                   Int?
-  handEyeCoordination       Int?
-  competitiveness           Int?
-  footballExperience        Int?
-  offensiveKnowledge        Int?
-  defensiveKnowledge        Int?
-  totalScore                Int?
-  qb                        String?
-  blocker                   String?
-  wr                        String?
-  slot                      String?
-  rusher                    String?
-  safety                    String?
-  corner                    String?
-  linebacker                String?
-  missingWeeks              Boolean? @default(false)
-  whichWeeks                String?
-  additionalContext         String?
-  otherExperience           String?
+model Qb {
+  id                      Int     @id @default(autoincrement())
+  firstName               String
+  lastName                String
+  drafted                 Boolean @default(false)
+  selected                Boolean @default(false)
+  sortOrder               Int     @default(0)
+  notes                   String?
+  height                  String?
+  pronouns                String?
+  womens                  Boolean @default(false)
+  totalScore              Int?
+  speed                   Int?
+  agility                 Int?
+  handEyeCoordination     Int?
+  competitiveness         Int?
+  footballExperience      Int?
+  offensiveKnowledge      Int?
+  defensiveKnowledge      Int?
+  qb                      String?
+  blocker                 String?
+  wr                      String?
+  slot                    String?
+  rusher                  String?
+  safety                  String?
+  corner                  String?
+  linebacker              String?
+  missingWeeks            Boolean @default(false)
+  whichWeeks              String?
+  additionalContext       String?
+  otherExperience         String?
+  offDefCaptainExperience String?
+  offDefCaptainInterest   String?
+  socialCaptainInterest   Boolean @default(false)
+  returningMember         Boolean @default(false)
+  ngffl                   Boolean @default(false)
+  summitMhcInterest       Boolean @default(false)
+
+  @@unique([firstName, lastName])
+}
+
+model ReturningPlayer {
+  id                      Int     @id @default(autoincrement())
+  firstName               String
+  lastName                String
+  favorite                Boolean @default(false)
+  selected                Boolean @default(false)
+  drafted                 Boolean @default(false)
+  rejected                Boolean @default(false)
+  notes                   String?
+  bucket                  String?
+  group                   Int?
+  height                  String?
+  jerseySize              String?
+  pronouns                String?
+  womens                  Boolean @default(false)
+  offDefCaptainExperience String?
+  offDefCaptainInterest   String?
+  socialCaptainInterest   Boolean @default(false)
+  ngffl                   Boolean @default(false)
+  speed                   Int?
+  agility                 Int?
+  handEyeCoordination     Int?
+  competitiveness         Int?
+  footballExperience      Int?
+  offensiveKnowledge      Int?
+  defensiveKnowledge      Int?
+  totalScore              Int?
+  qb                      String?
+  blocker                 String?
+  wr                      String?
+  slot                    String?
+  rusher                  String?
+  safety                  String?
+  corner                  String?
+  linebacker              String?
+  missingWeeks            Boolean @default(false)
+  whichWeeks              String?
+  additionalContext       String?
+  otherExperience         String?
+
+  @@unique([firstName, lastName])
+}
+
+model Rookie {
+  id                      Int     @id @default(autoincrement())
+  firstName               String
+  lastName                String
+  favorite                Boolean @default(false)
+  selected                Boolean @default(false)
+  drafted                 Boolean @default(false)
+  rejected                Boolean @default(false)
+  notes                   String?
+  bucket                  String?
+  group                   Int?
+  height                  String?
+  jerseySize              String?
+  pronouns                String?
+  womens                  Boolean @default(false)
+  offDefCaptainExperience String?
+  offDefCaptainInterest   String?
+  socialCaptainInterest   Boolean @default(false)
+  ngffl                   Boolean @default(false)
+  speed                   Int?
+  agility                 Int?
+  handEyeCoordination     Int?
+  competitiveness         Int?
+  footballExperience      Int?
+  offensiveKnowledge      Int?
+  defensiveKnowledge      Int?
+  totalScore              Int?
+  qb                      String?
+  blocker                 String?
+  wr                      String?
+  slot                    String?
+  rusher                  String?
+  safety                  String?
+  corner                  String?
+  linebacker              String?
+  missingWeeks            Boolean @default(false)
+  whichWeeks              String?
+  additionalContext       String?
+  otherExperience         String?
+
+  @@unique([firstName, lastName])
 }

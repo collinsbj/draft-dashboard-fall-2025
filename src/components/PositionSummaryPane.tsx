@@ -1,5 +1,10 @@
 "use client";
 
+import { useMemo } from "react";
+import { useReturningPlayers } from "@/app/hooks/useReturningPlayers";
+import { useRookies } from "@/app/hooks/useRookies";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -8,8 +13,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { usePlayers } from "@/app/hooks/usePlayers";
 
 type PositionKey =
   | "blocker"
@@ -20,81 +23,49 @@ type PositionKey =
   | "corner"
   | "linebacker";
 
-const positions: Array<{ position: string; key: PositionKey }> = [
-  {
-    position: "Blocker",
-    key: "blocker",
-  },
-  {
-    position: "Wide Receiver",
-    key: "wr",
-  },
-  {
-    position: "Slot Receiver",
-    key: "slot",
-  },
-  {
-    position: "Rusher",
-    key: "rusher",
-  },
-  {
-    position: "Safety",
-    key: "safety",
-  },
-  {
-    position: "Corner",
-    key: "corner",
-  },
-  {
-    position: "Linebacker",
-    key: "linebacker",
-  },
+const positions: Array<{ label: string; key: PositionKey }> = [
+  { label: "Blocker", key: "blocker" },
+  { label: "Wide Receiver", key: "wr" },
+  { label: "Slot Receiver", key: "slot" },
+  { label: "Rusher", key: "rusher" },
+  { label: "Safety", key: "safety" },
+  { label: "Corner", key: "corner" },
+  { label: "Linebacker", key: "linebacker" },
 ];
 
 export function PositionSummaryPane() {
-  const { selectedPlayers, isLoadingSelected } = usePlayers();
+  const { returningPlayers, isLoadingReturningPlayers } = useReturningPlayers();
+  const { rookies, isLoadingRookies } = useRookies();
+  const selected = useMemo(
+    () => [...returningPlayers, ...rookies].filter((player) => player.selected),
+    [returningPlayers, rookies]
+  );
+  const isLoading = isLoadingReturningPlayers || isLoadingRookies;
 
   const getPositionCounts = (key: PositionKey) => {
-    const preferred = selectedPlayers.filter(
-      (player) => player[key] === "Preferred"
-    ).length;
-
-    const willing = selectedPlayers.filter(
-      (player) => player[key] === "Willing"
-    ).length;
-
-    return {
-      total: preferred + willing,
-      preferred,
-      willing,
-    };
+    const preferred = selected.filter((player) => player[key] === "Preferred").length;
+    const willing = selected.filter((player) => player[key] === "Willing").length;
+    return { total: preferred + willing, preferred, willing };
   };
 
-  const defensiveCaptainCount = selectedPlayers.filter(
-    (player) =>
-      player.offDefCaptainInterest === "Both" ||
-      player.offDefCaptainInterest === "Defensive"
+  const womenPlus = selected.filter((player) => player.womens).length;
+  const defensiveCaptainCount = selected.filter((player) =>
+    ["Both", "Defensive"].includes(player.offDefCaptainInterest ?? "")
   ).length;
-
-  const socialCaptainCount = selectedPlayers.filter(
-    (player) => player.socialCaptainInterest
-  ).length;
-
-  const womensPlus =
-    selectedPlayers.filter((player) => player.womens).length + 2;
+  const socialCaptainCount = selected.filter((player) => player.socialCaptainInterest).length;
 
   return (
-    <Card className="h-100 overflow-y-auto">
-      <CardHeader>
-        <CardTitle>Position Summary</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoadingSelected ? (
-          <div className="flex justify-center items-center h-64">
-            <p className="text-muted-foreground">Loading...</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
+    <>
+      <Card className="border-0 bg-transparent shadow-none">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Position Summary</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="pt-1">
+              <Skeleton className="h-40 w-full rounded-md" />
+            </div>
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -105,40 +76,58 @@ export function PositionSummaryPane() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {positions.map((summary) => (
-                  <TableRow key={summary.position}>
-                    <TableCell>{summary.position}</TableCell>
-                    <TableCell>
-                      {getPositionCounts(summary.key).total}
-                    </TableCell>
-                    <TableCell>
-                      {getPositionCounts(summary.key).preferred}
-                    </TableCell>
-                    <TableCell>
-                      {getPositionCounts(summary.key).willing}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {positions.map((position) => {
+                  const counts = getPositionCounts(position.key);
+                  return (
+                    <TableRow key={position.key}>
+                      <TableCell>{position.label}</TableCell>
+                      <TableCell>{counts.total}</TableCell>
+                      <TableCell>{counts.preferred}</TableCell>
+                      <TableCell>{counts.willing}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
+      <Card className="border-0 bg-transparent shadow-none">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Team Composition</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="pt-1">
+              <Skeleton className="h-24 w-full rounded-md" />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead />
+                  <TableHead>Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 <TableRow>
                   <TableCell>Womens+</TableCell>
-                  <TableCell>{womensPlus}</TableCell>
+                  <TableCell>{womenPlus}</TableCell>
                 </TableRow>
-
                 <TableRow>
                   <TableCell>Defensive Captain</TableCell>
                   <TableCell>{defensiveCaptainCount}</TableCell>
                 </TableRow>
-
                 <TableRow>
                   <TableCell>Social Captain</TableCell>
                   <TableCell>{socialCaptainCount}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          )}
+        </CardContent>
+      </Card>
+    </>
   );
 }
