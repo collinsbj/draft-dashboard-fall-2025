@@ -1,5 +1,5 @@
 import { PrismaPg } from "@prisma/adapter-pg";
-import { Prisma, PrismaClient } from "../src/generated/prisma/client.ts";
+import { Prisma, PrismaClient } from "../src/generated/prisma/client";
 import XLSX from "xlsx";
 import {
   IGNORED_QB_COLUMNS,
@@ -43,7 +43,7 @@ const INTEGER_FIELDS = new Set([
 
 function mapQbRow(
   row: Record<string, unknown>,
-  sortOrder: number
+  sortOrder: number,
 ): Prisma.QbCreateManyInput | null {
   const firstName = normalizeName(row["First Name"]);
   const lastName = normalizeName(row["Last Name"]);
@@ -120,7 +120,7 @@ async function main() {
   }
 
   console.log(
-    `Seed complete. QBs inserted: ${qbRows.length}. Returning players inserted: 0. Rookies inserted: 0.`
+    `Seed complete. QBs inserted: ${qbRows.length}. Returning players inserted: 0. Rookies inserted: 0.`,
   );
 }
 

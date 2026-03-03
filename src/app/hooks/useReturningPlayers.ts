@@ -1,9 +1,32 @@
 "use client";
 
-import { Prisma, ReturningPlayer } from "@/generated/prisma/client";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { ReturningPlayer } from "@/generated/prisma/client";
+import { useQuery } from "@tanstack/react-query";
+import { useLocalDraftState } from "./useLocalDraftState";
 
 const queryKey = ["returningPlayers"] as const;
+
+type PlayerLocalState = {
+  favorite: boolean;
+  selected: boolean;
+  drafted: boolean;
+  rejected: boolean;
+  notes: string | null;
+};
+
+const PLAYER_LOCAL_DEFAULTS: PlayerLocalState = {
+  favorite: false,
+  selected: false,
+  drafted: false,
+  rejected: false,
+  notes: null,
+};
+
+export type ReturningPlayerRow = ReturningPlayer &
+  PlayerLocalState & {
+    displayName: string;
+  };
 
 async function getReturningPlayers(): Promise<ReturningPlayer[]> {
   const response = await fetch("/api/returning-players");
@@ -11,64 +34,54 @@ async function getReturningPlayers(): Promise<ReturningPlayer[]> {
   return response.json();
 }
 
-async function updateReturningPlayerMutation({
-  id,
-  data,
-}: {
-  id: number;
-  data: Prisma.ReturningPlayerUpdateInput;
-}) {
-  const response = await fetch(`/api/returning-players/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data }),
-  });
-  if (!response.ok) throw new Error("Failed to update returning player");
-  return response.json();
-}
-
 export function useReturningPlayers() {
-  const queryClient = useQueryClient();
   const playersQuery = useQuery({ queryKey, queryFn: getReturningPlayers });
+  const rawPlayers = useMemo(
+    () => playersQuery.data ?? [],
+    [playersQuery.data],
+  );
+  const dbIds = useMemo(() => rawPlayers.map((p) => p.id), [rawPlayers]);
 
-  const updateMutation = useMutation({
-    mutationFn: updateReturningPlayerMutation,
-    onMutate: async ({ id, data }) => {
-      await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<ReturningPlayer[]>(queryKey);
+  const { getState, setState } = useLocalDraftState<PlayerLocalState>(
+    "dglffl:returning-players:local-state",
+    dbIds,
+    PLAYER_LOCAL_DEFAULTS,
+  );
 
-      queryClient.setQueryData<ReturningPlayer[]>(queryKey, (old = []) =>
-        old.map((player) => {
-          if (player.id !== id) return player;
+  const returningPlayers = useMemo<ReturningPlayerRow[]>(
+    () =>
+      rawPlayers.map((p) => {
+        const local = getState(p.id);
+        return {
+          ...p,
+          ...local,
+          displayName: `${p.firstName} ${p.lastName}`,
+        } as ReturningPlayerRow;
+      }),
+    [rawPlayers, getState],
+  );
 
-          const next = { ...player } as Record<string, unknown>;
-          Object.entries(data).forEach(([key, value]) => {
-            if (typeof value === "object" && value && "set" in value) {
-              next[key] = (value as { set: unknown }).set;
-            } else {
-              next[key] = value;
-            }
-          });
-
-          return next as ReturningPlayer;
-        })
-      );
-
-      return { previous };
-    },
-    onError: (_error, _variables, context) => {
-      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey });
-    },
-  });
+  const updateReturningPlayer = useMemo(
+    () => ({
+      mutateAsync: ({
+        id,
+        data,
+      }: {
+        id: number;
+        data: Partial<PlayerLocalState>;
+      }) => {
+        setState(id, data);
+        return Promise.resolve();
+      },
+    }),
+    [setState],
+  );
 
   return {
-    returningPlayers: playersQuery.data ?? [],
+    returningPlayers,
     isLoadingReturningPlayers: playersQuery.isLoading,
     errorReturningPlayers: playersQuery.error,
     refetchReturningPlayers: playersQuery.refetch,
-    updateReturningPlayer: updateMutation.mutateAsync,
+    updateReturningPlayer: updateReturningPlayer.mutateAsync,
   };
 }

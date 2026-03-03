@@ -21,12 +21,18 @@ export function SelectedPlayersPane() {
   const selected = useMemo(
     () =>
       [
-        ...returningPlayers.map((player) => ({ ...player, sourceType: "Returning" as const })),
-        ...rookies.map((player) => ({ ...player, sourceType: "Rookie" as const })),
+        ...returningPlayers.map((player) => ({
+          ...player,
+          sourceType: "Returning" as const,
+        })),
+        ...rookies.map((player) => ({
+          ...player,
+          sourceType: "Rookie" as const,
+        })),
       ]
         .filter((player) => player.selected)
-        .sort((a, b) => a.firstName.localeCompare(b.firstName)),
-    [returningPlayers, rookies]
+        .sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    [returningPlayers, rookies],
   );
 
   const isLoading = isLoadingReturningPlayers || isLoadingRookies;
@@ -42,7 +48,9 @@ export function SelectedPlayersPane() {
             <Skeleton className="h-40 w-full rounded-md" />
           </div>
         ) : selected.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No players selected yet.</p>
+          <p className="text-sm text-muted-foreground">
+            No players selected yet.
+          </p>
         ) : (
           <Table>
             <TableHeader>
@@ -55,9 +63,9 @@ export function SelectedPlayersPane() {
             </TableHeader>
             <TableBody>
               {selected.map((player) => (
-                <TableRow key={`${player.firstName}-${player.lastName}`}>
+                <TableRow key={player.displayName}>
                   <TableCell className="font-medium">
-                    {player.firstName} {player.lastName}
+                    {player.displayName}
                   </TableCell>
                   <TableCell>{player.sourceType}</TableCell>
                   <TableCell>{player.totalScore ?? "-"}</TableCell>

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { ThemeToggleButton } from "@/components/ThemeToggleButton";
 import { UploadSpreadsheetDialog } from "@/components/UploadSpreadsheetDialog";
+import { useAdminMode } from "@/app/hooks/useAdminMode";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
 
 export function Navigation() {
   const pathname = usePathname();
+  const { isAdmin } = useAdminMode();
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/70 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
@@ -50,8 +52,7 @@ export function Navigation() {
                 href={item.href}
                 className={cn(
                   "rounded-none border-b-2 border-transparent px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground",
-                  pathname === item.href &&
-                    "border-foreground text-foreground"
+                  pathname === item.href && "border-foreground text-foreground",
                 )}
               >
                 {item.label}
@@ -61,7 +62,7 @@ export function Navigation() {
         </div>
 
         <div className="hidden items-center gap-2 md:flex">
-          <UploadSpreadsheetDialog compact />
+          {isAdmin ? <UploadSpreadsheetDialog compact /> : null}
           <ThemeToggleButton />
         </div>
 
@@ -84,16 +85,18 @@ export function Navigation() {
                     href={item.href}
                     className={cn(
                       "rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
-                      pathname === item.href && "bg-muted text-foreground"
+                      pathname === item.href && "bg-muted text-foreground",
                     )}
                   >
                     {item.label}
                   </Link>
                 ))}
               </div>
-              <div className="mt-6">
-                <UploadSpreadsheetDialog />
-              </div>
+              {isAdmin ? (
+                <div className="mt-6">
+                  <UploadSpreadsheetDialog />
+                </div>
+              ) : null}
             </SheetContent>
           </Sheet>
         </div>

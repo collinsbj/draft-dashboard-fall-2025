@@ -4,15 +4,12 @@ export type SpreadsheetColumnMap = Record<string, string>;
 
 export const IGNORED_QB_COLUMNS = new Set([
   "Category",
-  "Full Name",
   "Interest in outreach and volunteer opportunities?",
   "Want to Ref",
   "Interest in sponsoring a player?",
 ]);
 
 const SHARED_COLUMN_ALIASES: SpreadsheetColumnMap = {
-  "First Name": "firstName",
-  "Last Name": "lastName",
   Height: "height",
   "Preferred Pronouns": "pronouns",
   "Womens+?": "womens",
@@ -40,20 +37,22 @@ const SHARED_COLUMN_ALIASES: SpreadsheetColumnMap = {
   "Interest in being an Off/Def Captain?": "offDefCaptainInterest",
   "Social Captain": "socialCaptainInterest",
   "NGFFL within 2 years?": "ngffl",
-  "Jersey Size": "jerseySize",
-  Bucket: "bucket",
-  Group: "group",
-  Notes: "notes",
 };
 
 export const QB_COLUMN_MAP: SpreadsheetColumnMap = {
   ...SHARED_COLUMN_ALIASES,
+  "Full Name": "fullName",
   "Returning DGLFFL Member?": "returningMember",
   "Summit/MHC Interest?": "summitMhcInterest",
 };
 
 export const RETURNING_AND_ROOKIE_COLUMN_MAP: SpreadsheetColumnMap = {
   ...SHARED_COLUMN_ALIASES,
+  "First Name": "firstName",
+  "Last Name": "lastName",
+  "Jersey Size": "jerseySize",
+  Bucket: "bucket",
+  Group: "group",
 };
 
 export const UPLOAD_COLUMN_MAPS: Record<UploadTableType, SpreadsheetColumnMap> =

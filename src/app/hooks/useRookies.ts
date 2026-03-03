@@ -1,9 +1,32 @@
 "use client";
 
-import { Prisma, Rookie } from "@/generated/prisma/client";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { Rookie } from "@/generated/prisma/client";
+import { useQuery } from "@tanstack/react-query";
+import { useLocalDraftState } from "./useLocalDraftState";
 
 const queryKey = ["rookies"] as const;
+
+type PlayerLocalState = {
+  favorite: boolean;
+  selected: boolean;
+  drafted: boolean;
+  rejected: boolean;
+  notes: string | null;
+};
+
+const PLAYER_LOCAL_DEFAULTS: PlayerLocalState = {
+  favorite: false,
+  selected: false,
+  drafted: false,
+  rejected: false,
+  notes: null,
+};
+
+export type RookieRow = Rookie &
+  PlayerLocalState & {
+    displayName: string;
+  };
 
 async function getRookies(): Promise<Rookie[]> {
   const response = await fetch("/api/rookies");
@@ -11,63 +34,54 @@ async function getRookies(): Promise<Rookie[]> {
   return response.json();
 }
 
-async function updateRookieMutation({
-  id,
-  data,
-}: {
-  id: number;
-  data: Prisma.RookieUpdateInput;
-}) {
-  const response = await fetch(`/api/rookies/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data }),
-  });
-  if (!response.ok) throw new Error("Failed to update rookie");
-  return response.json();
-}
-
 export function useRookies() {
-  const queryClient = useQueryClient();
   const rookiesQuery = useQuery({ queryKey, queryFn: getRookies });
+  const rawRookies = useMemo(
+    () => rookiesQuery.data ?? [],
+    [rookiesQuery.data],
+  );
+  const dbIds = useMemo(() => rawRookies.map((r) => r.id), [rawRookies]);
 
-  const updateMutation = useMutation({
-    mutationFn: updateRookieMutation,
-    onMutate: async ({ id, data }) => {
-      await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<Rookie[]>(queryKey);
+  const { getState, setState } = useLocalDraftState<PlayerLocalState>(
+    "dglffl:rookies:local-state",
+    dbIds,
+    PLAYER_LOCAL_DEFAULTS,
+  );
 
-      queryClient.setQueryData<Rookie[]>(queryKey, (old = []) =>
-        old.map((player) => {
-          if (player.id !== id) return player;
+  const rookies = useMemo<RookieRow[]>(
+    () =>
+      rawRookies.map((r) => {
+        const local = getState(r.id);
+        return {
+          ...r,
+          ...local,
+          displayName: `${r.firstName} ${r.lastName}`,
+        } as RookieRow;
+      }),
+    [rawRookies, getState],
+  );
 
-          const next = { ...player } as Record<string, unknown>;
-          Object.entries(data).forEach(([key, value]) => {
-            if (typeof value === "object" && value && "set" in value) {
-              next[key] = (value as { set: unknown }).set;
-            } else {
-              next[key] = value;
-            }
-          });
-          return next as Rookie;
-        })
-      );
-
-      return { previous };
-    },
-    onError: (_error, _variables, context) => {
-      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey });
-    },
-  });
+  const updateRookie = useMemo(
+    () => ({
+      mutateAsync: ({
+        id,
+        data,
+      }: {
+        id: number;
+        data: Partial<PlayerLocalState>;
+      }) => {
+        setState(id, data);
+        return Promise.resolve();
+      },
+    }),
+    [setState],
+  );
 
   return {
-    rookies: rookiesQuery.data ?? [],
+    rookies,
     isLoadingRookies: rookiesQuery.isLoading,
     errorRookies: rookiesQuery.error,
     refetchRookies: rookiesQuery.refetch,
-    updateRookie: updateMutation.mutateAsync,
+    updateRookie: updateRookie.mutateAsync,
   };
 }

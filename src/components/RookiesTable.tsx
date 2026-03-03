@@ -3,27 +3,42 @@
 import { useCallback, useMemo } from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { Rookie } from "@/generated/prisma/client";
-import { useRookies } from "@/app/hooks/useRookies";
-import { DraftDataTable } from "@/components/DraftDataTable";
+import { RookieRow, useRookies } from "@/app/hooks/useRookies";
+import { useAdminMode } from "@/app/hooks/useAdminMode";
+import {
+  ColumnHeaderInfo,
+  DraftDataTable,
+  heightSortingFn,
+} from "@/components/DraftDataTable";
 import { UploadSpreadsheetDialog } from "@/components/UploadSpreadsheetDialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Star, X } from "lucide-react";
 
 const yesNoCell = ({ getValue }: { getValue: () => unknown }) =>
   getValue() === true ? "Yes" : "No";
 
 export function RookiesTable() {
-  const { rookies, isLoadingRookies, errorRookies, refetchRookies, updateRookie } =
-    useRookies();
+  const {
+    rookies,
+    isLoadingRookies,
+    errorRookies,
+    refetchRookies,
+    updateRookie,
+  } = useRookies();
+  const { isAdmin } = useAdminMode();
 
   const patchPlayer = useCallback(
     async (
-      player: Rookie,
-      data: Partial<Rookie>,
-      undoData?: Partial<Rookie>,
-      toastLabel?: string
+      player: RookieRow,
+      data: Partial<RookieRow>,
+      undoData?: Partial<RookieRow>,
+      toastLabel?: string,
     ) => {
       await updateRookie({ id: player.id, data });
 
@@ -40,21 +55,25 @@ export function RookiesTable() {
         });
       }
     },
-    [updateRookie]
+    [updateRookie],
   );
 
-  const columns = useMemo<ColumnDef<Rookie>[]>(
+  const columns = useMemo<ColumnDef<RookieRow>[]>(
     () => [
       {
         id: "__compare",
-        header: "Cmp",
+        header: () => (
+          <ColumnHeaderInfo label="Cmp" info="Compare players side-by-side" />
+        ),
         enableSorting: false,
         enableHiding: false,
         cell: () => null,
       },
       {
         id: "favorite",
-        header: "Fav",
+        header: () => (
+          <ColumnHeaderInfo label="Fav" info="Mark as a favorite pick" />
+        ),
         cell: ({ row }) => {
           const player = row.original;
           return (
@@ -66,10 +85,12 @@ export function RookiesTable() {
                   player,
                   { favorite: !player.favorite },
                   { favorite: !!player.favorite },
-                  `${player.firstName}'s favorite was updated.`
+                  `${player.displayName}'s favorite was updated.`,
                 )
               }
-              className={player.favorite ? "text-amber-500" : "text-muted-foreground"}
+              className={
+                player.favorite ? "text-amber-500" : "text-muted-foreground"
+              }
             >
               <Star className="size-4" />
             </Button>
@@ -78,47 +99,78 @@ export function RookiesTable() {
       },
       {
         id: "selected",
-        header: "Selected",
+        header: () => (
+          <ColumnHeaderInfo label="Selected" info="You drafted this player" />
+        ),
         cell: ({ row }) => {
           const player = row.original;
-          return (
+          const disabled = !!player.drafted;
+          const checkbox = (
             <Checkbox
               checked={player.selected}
+              disabled={disabled}
               onCheckedChange={() =>
                 patchPlayer(
                   player,
                   { selected: !player.selected },
                   { selected: !!player.selected },
-                  `${player.firstName}'s selected status was updated.`
+                  `${player.displayName}'s selected status was updated.`,
                 )
               }
             />
+          );
+          if (!disabled) return checkbox;
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>{checkbox}</span>
+              </TooltipTrigger>
+              <TooltipContent>Undraft player first</TooltipContent>
+            </Tooltip>
           );
         },
       },
       {
         id: "drafted",
-        header: "Drafted",
+        header: () => (
+          <ColumnHeaderInfo
+            label="Drafted"
+            info="Player was drafted by another team"
+          />
+        ),
         cell: ({ row }) => {
           const player = row.original;
-          return (
+          const disabled = !!player.selected;
+          const checkbox = (
             <Checkbox
               checked={player.drafted}
+              disabled={disabled}
               onCheckedChange={() =>
                 patchPlayer(
                   player,
                   { drafted: !player.drafted },
                   { drafted: !!player.drafted },
-                  `${player.firstName}'s drafted status was updated.`
+                  `${player.displayName}'s drafted status was updated.`,
                 )
               }
             />
+          );
+          if (!disabled) return checkbox;
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>{checkbox}</span>
+              </TooltipTrigger>
+              <TooltipContent>Unselect player first</TooltipContent>
+            </Tooltip>
           );
         },
       },
       {
         id: "rejected",
-        header: "No",
+        header: () => (
+          <ColumnHeaderInfo label="No" info="Player you don't want to draft" />
+        ),
         cell: ({ row }) => {
           const player = row.original;
           return (
@@ -130,10 +182,12 @@ export function RookiesTable() {
                   player,
                   { rejected: !player.rejected },
                   { rejected: !!player.rejected },
-                  `${player.firstName}'s No status was updated.`
+                  `${player.displayName}'s No status was updated.`,
                 )
               }
-              className={player.rejected ? "text-red-500" : "text-muted-foreground"}
+              className={
+                player.rejected ? "text-red-500" : "text-muted-foreground"
+              }
             >
               <X className="size-4" />
             </Button>
@@ -143,16 +197,14 @@ export function RookiesTable() {
       {
         id: "name",
         header: "Name",
-        accessorFn: (row) => `${row.firstName} ${row.lastName}`,
+        accessorFn: (row) => row.displayName,
         cell: ({ row }) => (
-          <span className="font-semibold">
-            {row.original.firstName} {row.original.lastName}
-          </span>
+          <span className="font-semibold">{row.original.displayName}</span>
         ),
       },
       { accessorKey: "bucket", header: "Bucket" },
       { accessorKey: "group", header: "Group" },
-      { accessorKey: "height", header: "Height" },
+      { accessorKey: "height", header: "Height", sortingFn: heightSortingFn },
       { accessorKey: "jerseySize", header: "Jersey" },
       { accessorKey: "pronouns", header: "Pronouns" },
       { accessorKey: "womens", header: "Womens+", cell: yesNoCell },
@@ -170,7 +222,7 @@ export function RookiesTable() {
       { accessorKey: "corner", header: "Corner" },
       { accessorKey: "linebacker", header: "LB" },
     ],
-    [patchPlayer]
+    [patchPlayer],
   );
 
   return (
@@ -183,13 +235,16 @@ export function RookiesTable() {
       error={errorRookies}
       onRetry={() => void refetchRookies()}
       defaultHideDrafted
+      defaultHideSelected
       defaultHideRejected
       rightActions={
-        <UploadSpreadsheetDialog
-          defaultTableType="rookies"
-          compact
-          onUploaded={() => void refetchRookies()}
-        />
+        isAdmin ? (
+          <UploadSpreadsheetDialog
+            defaultTableType="rookies"
+            compact
+            onUploaded={() => void refetchRookies()}
+          />
+        ) : null
       }
     />
   );

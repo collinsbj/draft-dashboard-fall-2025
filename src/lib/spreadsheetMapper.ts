@@ -43,7 +43,7 @@ type ParsedSpreadsheetRow = Record<string, string | number | boolean | null>;
 function mapRawValue(
   key: string,
   rawValue: unknown,
-  tableType: UploadTableType
+  tableType: UploadTableType,
 ): string | number | boolean | null {
   const booleanFields =
     tableType === "qbs" ? QB_BOOLEAN_FIELDS : RETURNING_BOOLEAN_FIELDS;
@@ -61,7 +61,7 @@ function mapRawValue(
 
 export function parseSpreadsheet(
   fileBuffer: Uint8Array,
-  tableType: UploadTableType
+  tableType: UploadTableType,
 ): ParsedSpreadsheetRow[] {
   const workbook = XLSX.read(fileBuffer, { type: "array" });
   const firstSheet = workbook.SheetNames[0];
@@ -72,7 +72,7 @@ export function parseSpreadsheet(
 
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
     workbook.Sheets[firstSheet],
-    { defval: null }
+    { defval: null },
   );
 
   const columnMap =
@@ -81,23 +81,36 @@ export function parseSpreadsheet(
   const parsedRows: ParsedSpreadsheetRow[] = [];
 
   rows.forEach((row) => {
-    const firstName = normalizeName(row["First Name"]);
-    const lastName = normalizeName(row["Last Name"]);
+    if (tableType === "qbs") {
+      const fullName = normalizeName(row["Full Name"]);
+      if (!fullName) return;
 
-    if (!firstName || !lastName) return;
+      const parsed: ParsedSpreadsheetRow = { fullName };
 
-    const parsed: ParsedSpreadsheetRow = { firstName, lastName };
+      Object.entries(row).forEach(([spreadsheetKey, rawValue]) => {
+        if (IGNORED_QB_COLUMNS.has(spreadsheetKey)) return;
+        const mappedKey = columnMap[spreadsheetKey];
+        if (!mappedKey || mappedKey === "fullName") return;
+        parsed[mappedKey] = mapRawValue(mappedKey, rawValue, tableType);
+      });
 
-    Object.entries(row).forEach(([spreadsheetKey, rawValue]) => {
-      if (tableType === "qbs" && IGNORED_QB_COLUMNS.has(spreadsheetKey)) return;
-      const mappedKey = columnMap[spreadsheetKey];
-      if (!mappedKey || mappedKey === "firstName" || mappedKey === "lastName") {
-        return;
-      }
-      parsed[mappedKey] = mapRawValue(mappedKey, rawValue, tableType);
-    });
+      parsedRows.push(parsed);
+    } else {
+      const firstName = normalizeName(row["First Name"]);
+      const lastName = normalizeName(row["Last Name"]);
+      if (!firstName || !lastName) return;
 
-    parsedRows.push(parsed);
+      const parsed: ParsedSpreadsheetRow = { firstName, lastName };
+
+      Object.entries(row).forEach(([spreadsheetKey, rawValue]) => {
+        const mappedKey = columnMap[spreadsheetKey];
+        if (!mappedKey || mappedKey === "firstName" || mappedKey === "lastName")
+          return;
+        parsed[mappedKey] = mapRawValue(mappedKey, rawValue, tableType);
+      });
+
+      parsedRows.push(parsed);
+    }
   });
 
   return parsedRows;

@@ -5,6 +5,7 @@ import {
   ColumnDef,
   ColumnPinningState,
   ColumnOrderState,
+  SortingFn,
   SortingState,
   VisibilityState,
   flexRender,
@@ -59,18 +60,72 @@ import {
   ArrowUpDown,
   Columns3,
   GripVertical,
+  Info,
   RefreshCw,
   RotateCcw,
   Scale,
   Search,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+
+export function ColumnHeaderInfo({
+  label,
+  info,
+}: {
+  label: string;
+  info: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {label}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex cursor-default"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <Info className="size-3.5 text-muted-foreground" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{info}</TooltipContent>
+      </Tooltip>
+    </span>
+  );
+}
+
+function parseHeightToInches(value: unknown): number {
+  if (value == null) return -1;
+  const s = String(value).trim();
+  // Handle ">6'" style
+  const gt = s.startsWith(">");
+  const cleaned = s.replace(/^>/, "");
+  const match = cleaned.match(/^(\d+)[''′]\s*(\d+)?[""″]?$/);
+  if (!match) return -1;
+  const feet = parseInt(match[1], 10);
+  const inches = match[2] ? parseInt(match[2], 10) : 0;
+  const total = feet * 12 + inches;
+  return gt ? total + 0.5 : total;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const heightSortingFn: SortingFn<any> = (rowA, rowB, columnId) => {
+  const a = parseHeightToInches(rowA.getValue(columnId));
+  const b = parseHeightToInches(rowB.getValue(columnId));
+  return a - b;
+};
 
 export type DraftTableRow = {
   id: number;
-  firstName: string;
-  lastName: string;
+  displayName: string;
   drafted?: boolean;
+  selected?: boolean;
   rejected?: boolean;
   [key: string]: unknown;
 };
@@ -83,16 +138,25 @@ type DraftDataTableProps<T extends DraftTableRow> = {
   isLoading: boolean;
   error: unknown;
   onRetry?: () => void;
-  onRowReorder?: (updates: Array<{ id: number; sortOrder: number }>) => Promise<void>;
+  onRowReorder?: (
+    updates: Array<{ id: number; sortOrder: number }>,
+  ) => Promise<void>;
   stickyTopOffsetClassName?: string;
   defaultHideDrafted?: boolean;
+  defaultHideSelected?: boolean;
   defaultHideRejected?: boolean;
   draftTotal?: number;
   rightActions?: React.ReactNode;
 };
 
 const CONTROL_COLUMN_IDS = new Set(["__drag", "__compare"]);
-const COMPARE_EXCLUDED_IDS = new Set(["__drag", "__compare", "drafted", "selected", "name"]);
+const COMPARE_EXCLUDED_IDS = new Set([
+  "__drag",
+  "__compare",
+  "drafted",
+  "selected",
+  "name",
+]);
 const STORAGE_KEY_PREFIX = "dglffl-table:";
 
 type SortableHeaderProps = {
@@ -101,8 +165,14 @@ type SortableHeaderProps = {
 };
 
 function SortableHeader({ id, children }: SortableHeaderProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
 
   return (
     <div
@@ -111,7 +181,7 @@ function SortableHeader({ id, children }: SortableHeaderProps) {
       className={cn(
         "flex w-full items-center",
         isDragging && "opacity-60",
-        !CONTROL_COLUMN_IDS.has(id) && "cursor-grab active:cursor-grabbing"
+        !CONTROL_COLUMN_IDS.has(id) && "cursor-grab active:cursor-grabbing",
       )}
       {...(!CONTROL_COLUMN_IDS.has(id) ? { ...attributes, ...listeners } : {})}
     >
@@ -135,7 +205,7 @@ function SortableRow({ id, children }: SortableRowProps) {
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
         "border-b border-border/60 transition-colors hover:bg-muted/50",
-        isDragging && "opacity-60"
+        isDragging && "opacity-60",
       )}
     >
       {children(sortable)}
@@ -154,6 +224,7 @@ export function DraftDataTable<T extends DraftTableRow>({
   onRowReorder,
   stickyTopOffsetClassName = "top-0",
   defaultHideDrafted = false,
+  defaultHideSelected = false,
   defaultHideRejected = false,
   draftTotal,
   rightActions,
@@ -165,6 +236,7 @@ export function DraftDataTable<T extends DraftTableRow>({
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [hideDrafted, setHideDrafted] = useState(defaultHideDrafted);
+  const [hideSelected, setHideSelected] = useState(defaultHideSelected);
   const [hideRejected, setHideRejected] = useState(defaultHideRejected);
   const [searchValue, setSearchValue] = useState("");
   const [compareIds, setCompareIds] = useState<number[]>([]);
@@ -174,7 +246,9 @@ export function DraftDataTable<T extends DraftTableRow>({
   const columnStorageKey = `${STORAGE_KEY_PREFIX}${tableId}:columnOrder`;
   const visibilityStorageKey = `${STORAGE_KEY_PREFIX}${tableId}:columnVisibility`;
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
 
   useEffect(() => {
     setOrderedRows(data);
@@ -199,22 +273,27 @@ export function DraftDataTable<T extends DraftTableRow>({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(visibilityStorageKey, JSON.stringify(columnVisibility));
+    window.localStorage.setItem(
+      visibilityStorageKey,
+      JSON.stringify(columnVisibility),
+    );
   }, [columnVisibility, visibilityStorageKey]);
 
   const filteredRows = useMemo(() => {
     const needle = searchValue.trim().toLowerCase();
     return orderedRows.filter((row) => {
       if (hideDrafted && row.drafted) return false;
+      if (hideSelected && row.selected) return false;
       if (hideRejected && row.rejected) return false;
 
       if (!needle) return true;
-      const fullName = `${row.firstName} ${row.lastName}`.toLowerCase();
-      return fullName.includes(needle);
+      return row.displayName.toLowerCase().includes(needle);
     });
-  }, [orderedRows, hideDrafted, hideRejected, searchValue]);
+  }, [orderedRows, hideDrafted, hideSelected, hideRejected, searchValue]);
 
-  const draftedCount = data.filter((row) => Boolean(row.drafted)).length;
+  const draftedCount = data.filter(
+    (row) => Boolean(row.drafted) || Boolean(row.selected),
+  ).length;
   const totalDraftSlots = draftTotal ?? data.length;
   const progressPct = totalDraftSlots
     ? Math.round((draftedCount / totalDraftSlots) * 100)
@@ -222,7 +301,7 @@ export function DraftDataTable<T extends DraftTableRow>({
 
   const compareRows = useMemo(
     () => filteredRows.filter((row) => compareIds.includes(row.id)).slice(0, 3),
-    [filteredRows, compareIds]
+    [filteredRows, compareIds],
   );
 
   const table = useReactTable({
@@ -245,30 +324,41 @@ export function DraftDataTable<T extends DraftTableRow>({
         .filter((column) => !COMPARE_EXCLUDED_IDS.has(column.id))
         .map((column) => ({
           id: column.id,
-          label: typeof column.columnDef.header === "string" ? column.columnDef.header : column.id,
+          label:
+            typeof column.columnDef.header === "string"
+              ? column.columnDef.header
+              : column.id,
           getValue: (row: T) => {
-            const { accessorFn, accessorKey } = column.columnDef;
-            if (typeof accessorFn === "function") {
-              return accessorFn(row, 0);
+            const def = column.columnDef as unknown as Record<string, unknown>;
+            if (typeof def.accessorFn === "function") {
+              return (def.accessorFn as (row: T, index: number) => unknown)(
+                row,
+                0,
+              );
             }
-            if (typeof accessorKey === "string") {
-              return row[accessorKey];
+            if (typeof def.accessorKey === "string") {
+              return row[def.accessorKey];
             }
             return row[column.id];
           },
         })),
-    [table]
+    [table],
   );
 
-  const visibleColumnIds = table.getVisibleLeafColumns().map((column) => column.id);
+  const visibleColumnIds = table
+    .getVisibleLeafColumns()
+    .map((column) => column.id);
 
-  const hasRejectedColumn = data.some((row) => typeof row.rejected === "boolean");
+  const hasRejectedColumn = data.some(
+    (row) => typeof row.rejected === "boolean",
+  );
   const hasDraftedColumn = data.some((row) => typeof row.drafted === "boolean");
   const canRowReorder = Boolean(onRowReorder) && sorting.length === 0;
 
   const handleResetFilters = () => {
     setSearchValue("");
     setHideDrafted(defaultHideDrafted);
+    setHideSelected(defaultHideSelected);
     setHideRejected(defaultHideRejected);
     setSorting([]);
   };
@@ -295,17 +385,26 @@ export function DraftDataTable<T extends DraftTableRow>({
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIndex = filteredRows.findIndex((row) => String(row.id) === String(active.id));
-    const newIndex = filteredRows.findIndex((row) => String(row.id) === String(over.id));
+    const oldIndex = filteredRows.findIndex(
+      (row) => String(row.id) === String(active.id),
+    );
+    const newIndex = filteredRows.findIndex(
+      (row) => String(row.id) === String(over.id),
+    );
     if (oldIndex < 0 || newIndex < 0) return;
 
     const reordered = arrayMove(filteredRows, oldIndex, newIndex);
-    const updates = reordered.map((row, index) => ({ id: row.id, sortOrder: index }));
+    const updates = reordered.map((row, index) => ({
+      id: row.id,
+      sortOrder: index,
+    }));
 
     // Keep row order optimistic in the UI before server sync.
     const nextMap = new Map(reordered.map((row, index) => [row.id, index]));
     setOrderedRows((current) =>
-      [...current].sort((a, b) => (nextMap.get(a.id) ?? 0) - (nextMap.get(b.id) ?? 0))
+      [...current].sort(
+        (a, b) => (nextMap.get(a.id) ?? 0) - (nextMap.get(b.id) ?? 0),
+      ),
     );
 
     await onRowReorder?.(updates);
@@ -318,7 +417,7 @@ export function DraftDataTable<T extends DraftTableRow>({
           <div
             className={cn(
               "sticky z-30 border-b border-border/70 bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/70",
-              stickyTopOffsetClassName
+              stickyTopOffsetClassName,
             )}
           >
             <Skeleton className="mb-3 h-6 w-48" />
@@ -355,7 +454,7 @@ export function DraftDataTable<T extends DraftTableRow>({
         <div
           className={cn(
             "sticky z-30 border-b border-border/70 bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/70",
-            stickyTopOffsetClassName
+            stickyTopOffsetClassName,
           )}
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -363,7 +462,8 @@ export function DraftDataTable<T extends DraftTableRow>({
               <h2 className="text-lg font-semibold">{title}</h2>
               {hasDraftedColumn ? (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Draft progress: {draftedCount}/{totalDraftSlots} ({progressPct}%)
+                  Draft progress: {draftedCount}/{totalDraftSlots} (
+                  {progressPct}%)
                 </p>
               ) : null}
             </div>
@@ -394,7 +494,12 @@ export function DraftDataTable<T extends DraftTableRow>({
               <Button
                 variant={hideDrafted ? "default" : "outline"}
                 size="sm"
-                onClick={() => setHideDrafted((value) => !value)}
+                onClick={() => {
+                  setHideDrafted((value) => !value);
+                  if (defaultHideSelected) {
+                    setHideSelected((value) => !value);
+                  }
+                }}
               >
                 {hideDrafted ? "Showing Available" : "Showing All"}
               </Button>
@@ -417,7 +522,10 @@ export function DraftDataTable<T extends DraftTableRow>({
                   Columns
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="max-h-80 overflow-auto">
+              <DropdownMenuContent
+                align="end"
+                className="max-h-80 overflow-auto"
+              >
                 {table
                   .getAllLeafColumns()
                   .filter((column) => column.getCanHide())
@@ -426,7 +534,9 @@ export function DraftDataTable<T extends DraftTableRow>({
                       key={column.id}
                       checked={column.getIsVisible()}
                       onSelect={(event) => event.preventDefault()}
-                      onCheckedChange={(checked) => column.toggleVisibility(Boolean(checked))}
+                      onCheckedChange={(checked) =>
+                        column.toggleVisibility(Boolean(checked))
+                      }
                     >
                       {typeof column.columnDef.header === "string"
                         ? column.columnDef.header
@@ -467,7 +577,10 @@ export function DraftDataTable<T extends DraftTableRow>({
               <Table>
                 <TableHeader className="sticky top-[calc(var(--spacing)*0)] z-20 bg-background/95">
                   {table.getHeaderGroups().map((headerGroup) => (
-                    <TableRow key={headerGroup.id} className="border-b border-border/80">
+                    <TableRow
+                      key={headerGroup.id}
+                      className="border-b border-border/80"
+                    >
                       <SortableContext
                         items={visibleColumnIds}
                         strategy={horizontalListSortingStrategy}
@@ -479,24 +592,31 @@ export function DraftDataTable<T extends DraftTableRow>({
                               key={header.id}
                               className={cn(
                                 "whitespace-nowrap",
-                                header.column.getIsPinned() && "sticky z-10 bg-background/95"
+                                header.column.getIsPinned() &&
+                                  "sticky z-10 bg-background/95",
                               )}
                               style={
                                 header.column.getIsPinned()
-                                  ? { left: `${header.column.getStart("left")}px` }
+                                  ? {
+                                      left: `${header.column.getStart("left")}px`,
+                                    }
                                   : undefined
                               }
                             >
                               <SortableHeader id={header.column.id}>
-                                {header.isPlaceholder ? null : (
+                                {header.isPlaceholder ? null : header.column.getCanSort() ? (
                                   <Button
                                     variant="ghost"
                                     className="h-8 px-0 text-xs font-semibold hover:bg-transparent"
-                                    onClick={() => header.column.toggleSorting(sortDirection === "asc")}
+                                    onClick={() =>
+                                      header.column.toggleSorting(
+                                        sortDirection === "asc",
+                                      )
+                                    }
                                   >
                                     {flexRender(
                                       header.column.columnDef.header,
-                                      header.getContext()
+                                      header.getContext(),
                                     )}
                                     {sortDirection === "asc" ? (
                                       <ArrowUp className="ml-1 size-3.5" />
@@ -506,6 +626,13 @@ export function DraftDataTable<T extends DraftTableRow>({
                                       <ArrowUpDown className="ml-1 size-3.5 text-muted-foreground" />
                                     )}
                                   </Button>
+                                ) : (
+                                  <span className="h-8 px-0 text-xs font-semibold inline-flex items-center">
+                                    {flexRender(
+                                      header.column.columnDef.header,
+                                      header.getContext(),
+                                    )}
+                                  </span>
                                 )}
                               </SortableHeader>
                             </TableHead>
@@ -518,7 +645,9 @@ export function DraftDataTable<T extends DraftTableRow>({
 
                 <TableBody>
                   <SortableContext
-                    items={table.getRowModel().rows.map((row) => String(row.original.id))}
+                    items={table
+                      .getRowModel()
+                      .rows.map((row) => String(row.original.id))}
                     strategy={verticalListSortingStrategy}
                   >
                     {table.getRowModel().rows.map((row) => (
@@ -531,17 +660,19 @@ export function DraftDataTable<T extends DraftTableRow>({
                                   key={cell.id}
                                   className={cn(
                                     "w-9 align-top",
-                                    Boolean((row.original as Record<string, unknown>).favorite) &&
-                                      "bg-amber-500/10",
+                                    Boolean(
+                                      (row.original as Record<string, unknown>)
+                                        .favorite,
+                                    ) && "bg-amber-500/10",
                                     row.original.drafted && "bg-muted/30",
-                                    row.original.rejected && "bg-destructive/5"
+                                    row.original.rejected && "bg-destructive/5",
                                   )}
                                 >
                                   <button
                                     type="button"
                                     className={cn(
                                       "mt-1 inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted",
-                                      !canRowReorder && "opacity-40"
+                                      !canRowReorder && "opacity-40",
                                     )}
                                     disabled={!canRowReorder}
                                     aria-label="Drag row"
@@ -555,16 +686,20 @@ export function DraftDataTable<T extends DraftTableRow>({
                             }
 
                             if (cell.column.id === "__compare") {
-                              const checked = compareIds.includes(row.original.id);
+                              const checked = compareIds.includes(
+                                row.original.id,
+                              );
                               return (
                                 <TableCell
                                   key={cell.id}
                                   className={cn(
                                     "align-top",
-                                    Boolean((row.original as Record<string, unknown>).favorite) &&
-                                      "bg-amber-500/10",
+                                    Boolean(
+                                      (row.original as Record<string, unknown>)
+                                        .favorite,
+                                    ) && "bg-amber-500/10",
                                     row.original.drafted && "bg-muted/30",
-                                    row.original.rejected && "bg-destructive/5"
+                                    row.original.rejected && "bg-destructive/5",
                                   )}
                                 >
                                   <Checkbox
@@ -572,12 +707,13 @@ export function DraftDataTable<T extends DraftTableRow>({
                                     onCheckedChange={(nextChecked) => {
                                       setCompareIds((current) => {
                                         const set = new Set(current);
-                                        if (nextChecked) set.add(row.original.id);
+                                        if (nextChecked)
+                                          set.add(row.original.id);
                                         else set.delete(row.original.id);
                                         return Array.from(set).slice(0, 3);
                                       });
                                     }}
-                                    aria-label={`Select ${row.original.firstName} ${row.original.lastName} for comparison`}
+                                    aria-label={`Select ${row.original.displayName} for comparison`}
                                   />
                                 </TableCell>
                               );
@@ -588,22 +724,27 @@ export function DraftDataTable<T extends DraftTableRow>({
                                 key={cell.id}
                                 className={cn(
                                   "align-top",
-                                  cell.column.getIsPinned() && "sticky z-10 bg-card/95",
-                                  Boolean((row.original as Record<string, unknown>).favorite) &&
-                                    "bg-amber-500/10",
+                                  cell.column.getIsPinned() &&
+                                    "sticky z-10 bg-card/95",
+                                  Boolean(
+                                    (row.original as Record<string, unknown>)
+                                      .favorite,
+                                  ) && "bg-amber-500/10",
                                   row.original.drafted && "bg-muted/30",
-                                  row.original.rejected && "bg-destructive/5"
+                                  row.original.rejected && "bg-destructive/5",
                                 )}
                                 style={
                                   cell.column.getIsPinned()
-                                    ? { left: `${cell.column.getStart("left")}px` }
+                                    ? {
+                                        left: `${cell.column.getStart("left")}px`,
+                                      }
                                     : undefined
                                 }
                               >
                                 {(() => {
                                   const rendered = flexRender(
                                     cell.column.columnDef.cell,
-                                    cell.getContext()
+                                    cell.getContext(),
                                   );
                                   if (typeof rendered === "boolean") {
                                     return rendered ? "Yes" : "No";
@@ -640,7 +781,10 @@ export function DraftDataTable<T extends DraftTableRow>({
       </CardContent>
 
       <Dialog open={isCompareOpen} onOpenChange={setIsCompareOpen}>
-        <DialogContent style={{ width: 'fit-content' }} className="max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-4rem)] max-h-[calc(100vh-4rem)] overflow-y-auto">
+        <DialogContent
+          style={{ width: "fit-content" }}
+          className="max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-4rem)] max-h-[calc(100vh-4rem)] overflow-y-auto"
+        >
           <DialogHeader>
             <DialogTitle>Player Comparison</DialogTitle>
           </DialogHeader>
@@ -650,16 +794,16 @@ export function DraftDataTable<T extends DraftTableRow>({
                 <TableRow>
                   <TableHead>Metric</TableHead>
                   {compareRows.map((row) => (
-                    <TableHead key={row.id}>
-                      {row.firstName} {row.lastName}
-                    </TableHead>
+                    <TableHead key={row.id}>{row.displayName}</TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {comparisonColumns.map((column) => (
                   <TableRow key={column.id}>
-                    <TableCell className="font-medium">{column.label}</TableCell>
+                    <TableCell className="font-medium">
+                      {column.label}
+                    </TableCell>
                     {compareRows.map((row) => (
                       <TableCell key={`${row.id}-${column.id}`}>
                         {(() => {

@@ -1,9 +1,31 @@
 "use client";
 
-import { Prisma, Qb } from "@/generated/prisma/client";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { Qb } from "@/generated/prisma/client";
+import { useQuery } from "@tanstack/react-query";
+import { useLocalDraftState } from "./useLocalDraftState";
+import { useLocalSortOrder } from "./useLocalSortOrder";
 
 const queryKey = ["qbs"] as const;
+
+type QbLocalState = {
+  drafted: boolean;
+  selected: boolean;
+  notes: string | null;
+};
+
+const QB_LOCAL_DEFAULTS: QbLocalState = {
+  drafted: false,
+  selected: false,
+  notes: null,
+};
+
+export type QbRow = Qb & {
+  drafted: boolean;
+  selected: boolean;
+  notes: string | null;
+  displayName: string;
+};
 
 async function getQbs(): Promise<Qb[]> {
   const response = await fetch("/api/qbs");
@@ -11,99 +33,58 @@ async function getQbs(): Promise<Qb[]> {
   return response.json();
 }
 
-async function updateQbMutation({
-  id,
-  data,
-}: {
-  id: number;
-  data: Prisma.QbUpdateInput;
-}) {
-  const response = await fetch(`/api/qbs/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data }),
-  });
-  if (!response.ok) throw new Error("Failed to update QB");
-  return response.json();
-}
-
-async function reorderQbsMutation(updates: Array<{ id: number; sortOrder: number }>) {
-  const response = await fetch("/api/qbs/reorder", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ updates }),
-  });
-  if (!response.ok) throw new Error("Failed to reorder QBs");
-  return response.json();
-}
-
 export function useQbs() {
-  const queryClient = useQueryClient();
   const qbsQuery = useQuery({ queryKey, queryFn: getQbs });
+  const rawQbs = useMemo(() => qbsQuery.data ?? [], [qbsQuery.data]);
+  const dbIds = useMemo(() => rawQbs.map((q) => q.id), [rawQbs]);
 
-  const updateMutation = useMutation({
-    mutationFn: updateQbMutation,
-    onMutate: async ({ id, data }) => {
-      await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<Qb[]>(queryKey);
+  const { getState, setState } = useLocalDraftState<QbLocalState>(
+    "dglffl:qbs:local-state",
+    dbIds,
+    QB_LOCAL_DEFAULTS,
+  );
 
-      queryClient.setQueryData<Qb[]>(queryKey, (old = []) =>
-        old.map((player) => {
-          if (player.id !== id) return player;
+  const { orderedIds, reorder } = useLocalSortOrder(
+    "dglffl:qbs:sort-order",
+    dbIds,
+  );
 
-          const next = { ...player } as Record<string, unknown>;
-          Object.entries(data).forEach(([key, value]) => {
-            if (typeof value === "object" && value && "set" in value) {
-              next[key] = (value as { set: unknown }).set;
-            } else {
-              next[key] = value;
-            }
-          });
-          return next as Qb;
-        })
-      );
+  const qbs = useMemo<QbRow[]>(() => {
+    const byId = new Map(rawQbs.map((q) => [q.id, q]));
+    return orderedIds
+      .map((id) => {
+        const q = byId.get(id);
+        if (!q) return null;
+        const local = getState(id);
+        return { ...q, ...local, displayName: q.fullName } as QbRow;
+      })
+      .filter((row): row is QbRow => row !== null);
+  }, [rawQbs, orderedIds, getState]);
 
-      return { previous };
-    },
-    onError: (_error, _variables, context) => {
-      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey });
-    },
-  });
-
-  const reorderMutation = useMutation({
-    mutationFn: reorderQbsMutation,
-    onMutate: async (updates) => {
-      await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<Qb[]>(queryKey);
-      const updateMap = new Map(updates.map((item) => [item.id, item.sortOrder]));
-      queryClient.setQueryData<Qb[]>(queryKey, (old = []) =>
-        [...old]
-          .map((row) =>
-            updateMap.has(row.id)
-              ? { ...row, sortOrder: updateMap.get(row.id) ?? row.sortOrder }
-              : row
-          )
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-      );
-      return { previous };
-    },
-    onError: (_error, _variables, context) => {
-      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey });
-    },
-  });
+  const updateQb = useMemo(
+    () => ({
+      mutateAsync: ({
+        id,
+        data,
+      }: {
+        id: number;
+        data: Partial<QbLocalState>;
+      }) => {
+        setState(id, data);
+        return Promise.resolve();
+      },
+    }),
+    [setState],
+  );
 
   return {
-    qbs: qbsQuery.data ?? [],
+    qbs,
     isLoadingQbs: qbsQuery.isLoading,
     errorQbs: qbsQuery.error,
     refetchQbs: qbsQuery.refetch,
-    updateQb: updateMutation.mutateAsync,
-    reorderQbs: reorderMutation.mutateAsync,
+    updateQb: updateQb.mutateAsync,
+    reorderQbs: async (updates: Array<{ id: number; sortOrder: number }>) => {
+      reorder(updates);
+    },
   };
 }
