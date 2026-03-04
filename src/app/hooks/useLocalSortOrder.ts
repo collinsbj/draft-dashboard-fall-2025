@@ -66,11 +66,13 @@ export function useLocalSortOrder(
   const [orderedIds, setOrderedIds] = useState<number[]>(() => {
     if (typeof window === "undefined") return dbIds;
     const stored = readOrderFromStorage(storageKey);
+    if (dbIds.length === 0) return stored ?? [];
     return reconcile(stored, dbIds);
   });
 
   // Re-reconcile when dbIds change (new players added/removed)
   useEffect(() => {
+    if (dbIds.length === 0) return;
     setOrderedIds((prev) => {
       const next = reconcile(prev, dbIds);
       if (canStore) writeOrderToStorage(storageKey, next);

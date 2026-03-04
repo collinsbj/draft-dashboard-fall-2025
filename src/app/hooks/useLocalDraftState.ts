@@ -74,11 +74,13 @@ export function useLocalDraftState<T extends Record<string, unknown>>(
   const [stateMap, setStateMap] = useState<Record<number, T>>(() => {
     if (typeof window === "undefined") return {};
     const stored = readStorage<T>(storageKey, defaults);
+    if (dbIds.length === 0) return stored;
     return pruneAndDefault(stored, new Set(dbIds), defaults);
   });
 
   // Re-prune when dbIds change (e.g. after upload adds/removes players)
   useEffect(() => {
+    if (dbIds.length === 0) return;
     setStateMap((prev) => pruneAndDefault(prev, dbIdSet.current, defaults));
   }, [dbIds, defaults]);
 
