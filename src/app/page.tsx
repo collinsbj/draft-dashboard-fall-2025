@@ -14,7 +14,7 @@ import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useState } from "react";
 
 export default function Home() {
-  const [rightRailOpen, setRightRailOpen] = useState(true);
+  const [rightRailOpen, setRightRailOpen] = useState(false);
 
   return (
     <div className="flex h-full flex-col">
