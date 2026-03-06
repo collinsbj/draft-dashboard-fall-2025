@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
-import { UploadTableType, makeNameKey } from "@/lib/columnMaps";
-import { parseSpreadsheet } from "@/lib/spreadsheetMapper";
+import { UploadTableType } from "@/lib/columnMaps";
+import { parseSpreadsheet, ParsedPlayersResult } from "@/lib/spreadsheetMapper";
 import { Prisma } from "@/generated/prisma/client";
 
 function isUploadTableType(value: unknown): value is UploadTableType {
-  return value === "qbs" || value === "returningPlayers" || value === "rookies";
+  return value === "qbs" || value === "players";
 }
 
 function getErrorMessage(error: unknown): string {
@@ -59,7 +59,7 @@ const QB_UPLOAD_FIELDS = [
   "summitMhcInterest",
 ] as const;
 
-const RETURNING_AND_ROOKIE_UPLOAD_FIELDS = [
+const RETURNING_PLAYER_UPLOAD_FIELDS = [
   "firstName",
   "lastName",
   "bucket",
@@ -94,6 +94,13 @@ const RETURNING_AND_ROOKIE_UPLOAD_FIELDS = [
   "otherExperience",
 ] as const;
 
+const ROOKIE_UPLOAD_FIELDS = [
+  ...RETURNING_PLAYER_UPLOAD_FIELDS,
+  "dateOfBirth",
+  "mobileNumber",
+  "accountEmail",
+] as const;
+
 function sanitizeQbPayload(
   row: Record<string, unknown>,
 ): Prisma.QbUncheckedCreateInput {
@@ -108,7 +115,7 @@ function sanitizeReturningPayload(
 ): Prisma.ReturningPlayerUncheckedCreateInput {
   return pickAllowedFields(
     row,
-    RETURNING_AND_ROOKIE_UPLOAD_FIELDS,
+    RETURNING_PLAYER_UPLOAD_FIELDS,
   ) as Prisma.ReturningPlayerUncheckedCreateInput;
 }
 
@@ -117,107 +124,25 @@ function sanitizeRookiePayload(
 ): Prisma.RookieUncheckedCreateInput {
   return pickAllowedFields(
     row,
-    RETURNING_AND_ROOKIE_UPLOAD_FIELDS,
+    ROOKIE_UPLOAD_FIELDS,
   ) as Prisma.RookieUncheckedCreateInput;
 }
 
 async function syncQbs(rows: Record<string, unknown>[]) {
-  const existing = await prisma.qb.findMany();
-  const incomingKeys = new Set<string>();
-
-  await prisma.$transaction(
-    rows.map((row) => {
-      const fullName = String(row.fullName ?? "").trim();
-      const key = fullName.toLowerCase();
-      incomingKeys.add(key);
-
-      const payload = sanitizeQbPayload(row);
-
-      return prisma.qb.upsert({
-        where: { fullName },
-        create: { ...payload, fullName },
-        update: payload,
-      });
-    }),
-  );
-
-  const removedIds = existing
-    .filter((row) => !incomingKeys.has(row.fullName.trim().toLowerCase()))
-    .map((row) => row.id);
-
-  if (removedIds.length) {
-    await prisma.qb.deleteMany({ where: { id: { in: removedIds } } });
-  }
-
-  return { removed: removedIds.length };
+  await prisma.qb.deleteMany();
+  await prisma.qb.createMany({ data: rows.map(sanitizeQbPayload) });
 }
 
 async function syncReturningPlayers(rows: Record<string, unknown>[]) {
-  const existing = await prisma.returningPlayer.findMany();
-  const incomingKeys = new Set<string>();
-
-  await prisma.$transaction(
-    rows.map((row) => {
-      const firstName = String(row.firstName ?? "");
-      const lastName = String(row.lastName ?? "");
-      const key = makeNameKey(firstName, lastName);
-      incomingKeys.add(key);
-      const payload = sanitizeReturningPayload(row);
-
-      return prisma.returningPlayer.upsert({
-        where: { firstName_lastName: { firstName, lastName } },
-        create: { ...payload, firstName, lastName },
-        update: payload,
-      });
-    }),
-  );
-
-  const removedIds = existing
-    .filter(
-      (row) => !incomingKeys.has(makeNameKey(row.firstName, row.lastName)),
-    )
-    .map((row) => row.id);
-
-  if (removedIds.length) {
-    await prisma.returningPlayer.deleteMany({
-      where: { id: { in: removedIds } },
-    });
-  }
-
-  return { removed: removedIds.length };
+  await prisma.returningPlayer.deleteMany();
+  await prisma.returningPlayer.createMany({
+    data: rows.map(sanitizeReturningPayload),
+  });
 }
 
 async function syncRookies(rows: Record<string, unknown>[]) {
-  const existing = await prisma.rookie.findMany();
-  const incomingKeys = new Set<string>();
-
-  await prisma.$transaction(
-    rows.map((row) => {
-      const firstName = String(row.firstName ?? "");
-      const lastName = String(row.lastName ?? "");
-      const key = makeNameKey(firstName, lastName);
-      incomingKeys.add(key);
-      const payload = sanitizeRookiePayload(row);
-
-      return prisma.rookie.upsert({
-        where: { firstName_lastName: { firstName, lastName } },
-        create: { ...payload, firstName, lastName },
-        update: payload,
-      });
-    }),
-  );
-
-  const removedIds = existing
-    .filter(
-      (row) => !incomingKeys.has(makeNameKey(row.firstName, row.lastName)),
-    )
-    .map((row) => row.id);
-
-  if (removedIds.length) {
-    await prisma.rookie.deleteMany({ where: { id: { in: removedIds } } });
-  }
-
-  return { removed: removedIds.length };
+  await prisma.rookie.deleteMany();
+  await prisma.rookie.createMany({ data: rows.map(sanitizeRookiePayload) });
 }
 
 export async function POST(request: Request) {
@@ -228,7 +153,7 @@ export async function POST(request: Request) {
 
     if (!isUploadTableType(tableType)) {
       return NextResponse.json(
-        { error: "tableType must be one of qbs, returningPlayers, rookies" },
+        { error: "tableType must be one of qbs, players" },
         { status: 400 },
       );
     }
@@ -241,9 +166,9 @@ export async function POST(request: Request) {
     }
 
     const fileBytes = new Uint8Array(await file.arrayBuffer());
-    let rows: Record<string, unknown>[];
+    let parsed: ReturnType<typeof parseSpreadsheet>;
     try {
-      rows = parseSpreadsheet(fileBytes, tableType);
+      parsed = parseSpreadsheet(fileBytes, tableType);
     } catch (error) {
       console.error("Spreadsheet parse failed", error);
       return NextResponse.json(
@@ -252,24 +177,19 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!rows.length) {
-      return NextResponse.json(
-        { error: "No valid rows found in uploaded spreadsheet" },
-        { status: 400 },
-      );
-    }
-
     if (tableType === "qbs") {
+      const rows = parsed as Record<string, unknown>[];
+      if (!rows.length) {
+        return NextResponse.json(
+          { error: "No valid rows found in uploaded spreadsheet" },
+          { status: 400 },
+        );
+      }
       try {
-        const before = await prisma.qb.count();
-        const syncResult = await syncQbs(rows);
-        const after = await prisma.qb.count();
+        await syncQbs(rows);
         return NextResponse.json({
           tableType,
           addedOrUpdated: rows.length,
-          removed: syncResult.removed,
-          totalRows: after,
-          previousTotalRows: before,
         });
       } catch (error) {
         console.error("QB upload sync failed", error);
@@ -280,44 +200,26 @@ export async function POST(request: Request) {
       }
     }
 
-    if (tableType === "returningPlayers") {
-      try {
-        const before = await prisma.returningPlayer.count();
-        const syncResult = await syncReturningPlayers(rows);
-        const after = await prisma.returningPlayer.count();
-        return NextResponse.json({
-          tableType,
-          addedOrUpdated: rows.length,
-          removed: syncResult.removed,
-          totalRows: after,
-          previousTotalRows: before,
-        });
-      } catch (error) {
-        console.error("Returning players upload sync failed", error);
-        return NextResponse.json(
-          {
-            error: `Failed to sync returning player rows: ${getErrorMessage(error)}`,
-          },
-          { status: 500 },
-        );
-      }
+    const { returningPlayers, rookies } = parsed as ParsedPlayersResult;
+    if (!returningPlayers.length && !rookies.length) {
+      return NextResponse.json(
+        { error: "No valid rows found in uploaded spreadsheet" },
+        { status: 400 },
+      );
     }
 
     try {
-      const before = await prisma.rookie.count();
-      const syncResult = await syncRookies(rows);
-      const after = await prisma.rookie.count();
+      if (returningPlayers.length) await syncReturningPlayers(returningPlayers);
+      if (rookies.length) await syncRookies(rookies);
       return NextResponse.json({
         tableType,
-        addedOrUpdated: rows.length,
-        removed: syncResult.removed,
-        totalRows: after,
-        previousTotalRows: before,
+        returning: { addedOrUpdated: returningPlayers.length },
+        rookies: { addedOrUpdated: rookies.length },
       });
     } catch (error) {
-      console.error("Rookies upload sync failed", error);
+      console.error("Players upload sync failed", error);
       return NextResponse.json(
-        { error: `Failed to sync rookie rows: ${getErrorMessage(error)}` },
+        { error: `Failed to sync player rows: ${getErrorMessage(error)}` },
         { status: 500 },
       );
     }

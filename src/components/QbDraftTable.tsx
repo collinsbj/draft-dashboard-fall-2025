@@ -67,8 +67,8 @@ export function QbDraftTable() {
         header: () => (
           <ColumnHeaderInfo label="Cmp" info="Compare players side-by-side" />
         ),
+        meta: { displayName: "Compare" },
         enableSorting: false,
-        enableHiding: false,
         cell: () => null,
       },
       {
@@ -79,6 +79,7 @@ export function QbDraftTable() {
             info="Player was drafted by another team"
           />
         ),
+        meta: { displayName: "Drafted" },
         cell: ({ row }) => {
           const player = row.original;
           const disabled = !!player.selected;
@@ -112,6 +113,7 @@ export function QbDraftTable() {
         header: () => (
           <ColumnHeaderInfo label="Selected" info="You drafted this player" />
         ),
+        meta: { displayName: "Selected" },
         cell: ({ row }) => {
           const player = row.original;
           const otherSelected = selectedQb && selectedQb.id !== player.id;

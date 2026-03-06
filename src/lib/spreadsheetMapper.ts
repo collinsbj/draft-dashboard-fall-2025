@@ -40,13 +40,17 @@ const INTEGER_FIELDS = new Set([
 
 type ParsedSpreadsheetRow = Record<string, string | number | boolean | null>;
 
+export type ParsedPlayersResult = {
+  returningPlayers: ParsedSpreadsheetRow[];
+  rookies: ParsedSpreadsheetRow[];
+};
+
 function mapRawValue(
   key: string,
   rawValue: unknown,
-  tableType: UploadTableType,
+  isQb: boolean,
 ): string | number | boolean | null {
-  const booleanFields =
-    tableType === "qbs" ? QB_BOOLEAN_FIELDS : RETURNING_BOOLEAN_FIELDS;
+  const booleanFields = isQb ? QB_BOOLEAN_FIELDS : RETURNING_BOOLEAN_FIELDS;
 
   if (booleanFields.has(key)) {
     return normalizeBoolean(rawValue) ?? false;
@@ -59,58 +63,90 @@ function mapRawValue(
   return normalizeString(rawValue);
 }
 
+function findSheetBySubstring(
+  sheetNames: string[],
+  substring: string,
+): string | undefined {
+  const lower = substring.toLowerCase();
+  return sheetNames.find((name) => name.toLowerCase().includes(lower));
+}
+
+function parsePlayerRows(
+  sheet: XLSX.WorkSheet,
+): ParsedSpreadsheetRow[] {
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    defval: null,
+  });
+
+  const parsedRows: ParsedSpreadsheetRow[] = [];
+
+  rows.forEach((row) => {
+    const firstName = normalizeName(row["First Name"]);
+    const lastName = normalizeName(row["Last Name"]);
+    if (!firstName || !lastName) return;
+
+    const parsed: ParsedSpreadsheetRow = { firstName, lastName };
+
+    Object.entries(row).forEach(([spreadsheetKey, rawValue]) => {
+      const mappedKey = RETURNING_AND_ROOKIE_COLUMN_MAP[spreadsheetKey];
+      if (!mappedKey || mappedKey === "firstName" || mappedKey === "lastName")
+        return;
+      parsed[mappedKey] = mapRawValue(mappedKey, rawValue, false);
+    });
+
+    parsedRows.push(parsed);
+  });
+
+  return parsedRows;
+}
+
 export function parseSpreadsheet(
   fileBuffer: Uint8Array,
   tableType: UploadTableType,
-): ParsedSpreadsheetRow[] {
+): ParsedSpreadsheetRow[] | ParsedPlayersResult {
   const workbook = XLSX.read(fileBuffer, { type: "array" });
-  const firstSheet = workbook.SheetNames[0];
 
-  if (!firstSheet) {
-    return [];
+  if (tableType === "players") {
+    const returnerSheet = findSheetBySubstring(
+      workbook.SheetNames,
+      "Returner",
+    );
+    const rookieSheet = findSheetBySubstring(workbook.SheetNames, "Rookie");
+
+    return {
+      returningPlayers: returnerSheet
+        ? parsePlayerRows(workbook.Sheets[returnerSheet])
+        : [],
+      rookies: rookieSheet
+        ? parsePlayerRows(workbook.Sheets[rookieSheet])
+        : [],
+    };
   }
+
+  const firstSheet = workbook.SheetNames[0];
+  if (!firstSheet) return [];
 
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
     workbook.Sheets[firstSheet],
     { defval: null },
   );
 
-  const columnMap =
-    tableType === "qbs" ? QB_COLUMN_MAP : RETURNING_AND_ROOKIE_COLUMN_MAP;
-
   const parsedRows: ParsedSpreadsheetRow[] = [];
 
   rows.forEach((row) => {
-    if (tableType === "qbs") {
-      const fullName = normalizeName(row["Full Name"]);
-      if (!fullName) return;
+    const fullName = normalizeName(row["Full Name"]);
+    if (!fullName) return;
 
-      const parsed: ParsedSpreadsheetRow = { fullName };
+    const parsed: ParsedSpreadsheetRow = { fullName };
 
-      Object.entries(row).forEach(([spreadsheetKey, rawValue]) => {
-        if (IGNORED_QB_COLUMNS.has(spreadsheetKey)) return;
-        const mappedKey = columnMap[spreadsheetKey];
-        if (!mappedKey || mappedKey === "fullName") return;
-        parsed[mappedKey] = mapRawValue(mappedKey, rawValue, tableType);
-      });
+    Object.entries(row).forEach(([spreadsheetKey, rawValue]) => {
+      if (IGNORED_QB_COLUMNS.has(spreadsheetKey)) return;
+      const mappedKey = QB_COLUMN_MAP[spreadsheetKey];
+      if (!mappedKey || mappedKey === "fullName") return;
+      parsed[mappedKey] = mapRawValue(mappedKey, rawValue, true);
+    });
 
-      parsedRows.push(parsed);
-    } else {
-      const firstName = normalizeName(row["First Name"]);
-      const lastName = normalizeName(row["Last Name"]);
-      if (!firstName || !lastName) return;
-
-      const parsed: ParsedSpreadsheetRow = { firstName, lastName };
-
-      Object.entries(row).forEach(([spreadsheetKey, rawValue]) => {
-        const mappedKey = columnMap[spreadsheetKey];
-        if (!mappedKey || mappedKey === "firstName" || mappedKey === "lastName")
-          return;
-        parsed[mappedKey] = mapRawValue(mappedKey, rawValue, tableType);
-      });
-
-      parsedRows.push(parsed);
-    }
+    parsedRows.push(parsed);
   });
 
   return parsedRows;

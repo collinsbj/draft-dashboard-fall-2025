@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useReturningPlayers } from "@/app/hooks/useReturningPlayers";
 import { useRookies } from "@/app/hooks/useRookies";
+import { useQbs } from "@/app/hooks/useQbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -14,28 +15,80 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+type SelectedEntry = {
+  displayName: string;
+  sourceType: "Returning" | "Rookie" | "QB";
+  selected: boolean;
+  totalScore: number | null;
+  blocker: string | null;
+  wr: string | null;
+  slot: string | null;
+  rusher: string | null;
+  safety: string | null;
+  corner: string | null;
+  linebacker: string | null;
+};
+
+const POSITION_FIELDS: Array<{ key: keyof SelectedEntry; label: string }> = [
+  { key: "blocker", label: "Blocker" },
+  { key: "wr", label: "WR" },
+  { key: "slot", label: "Slot" },
+  { key: "rusher", label: "Rusher" },
+  { key: "safety", label: "Safety" },
+  { key: "corner", label: "Corner" },
+  { key: "linebacker", label: "LB" },
+];
+
+function formatPositions(player: SelectedEntry): string {
+  return POSITION_FIELDS.filter((pos) => {
+    const val = player[pos.key];
+    return val === "Preferred" || val === "Willing";
+  })
+    .map((pos) => {
+      const tag = player[pos.key] === "Preferred" ? "P" : "W";
+      return `${pos.label} (${tag})`;
+    })
+    .join(" • ");
+}
+
 export function SelectedPlayersPane() {
   const { returningPlayers, isLoadingReturningPlayers } = useReturningPlayers();
   const { rookies, isLoadingRookies } = useRookies();
+  const { qbs, isLoadingQbs } = useQbs();
 
-  const selected = useMemo(
-    () =>
-      [
-        ...returningPlayers.map((player) => ({
-          ...player,
-          sourceType: "Returning" as const,
-        })),
-        ...rookies.map((player) => ({
-          ...player,
-          sourceType: "Rookie" as const,
-        })),
-      ]
-        .filter((player) => player.selected)
-        .sort((a, b) => a.displayName.localeCompare(b.displayName)),
-    [returningPlayers, rookies],
-  );
+  const selected = useMemo(() => {
+    const entries: SelectedEntry[] = [
+      ...returningPlayers.map((player) => ({
+        ...player,
+        sourceType: "Returning" as const,
+      })),
+      ...rookies.map((player) => ({
+        ...player,
+        sourceType: "Rookie" as const,
+      })),
+    ].filter((player) => player.selected);
 
-  const isLoading = isLoadingReturningPlayers || isLoadingRookies;
+    const selectedQb = qbs.find((q) => q.selected);
+    if (selectedQb) {
+      entries.push({
+        displayName: selectedQb.displayName,
+        sourceType: "QB",
+        selected: true,
+        totalScore: selectedQb.totalScore ?? null,
+        blocker: selectedQb.blocker ?? null,
+        wr: selectedQb.wr ?? null,
+        slot: selectedQb.slot ?? null,
+        rusher: selectedQb.rusher ?? null,
+        safety: selectedQb.safety ?? null,
+        corner: selectedQb.corner ?? null,
+        linebacker: selectedQb.linebacker ?? null,
+      });
+    }
+
+    return entries.sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }, [returningPlayers, rookies, qbs]);
+
+  const isLoading = isLoadingReturningPlayers || isLoadingRookies || isLoadingQbs;
 
   return (
     <Card className="border-0 bg-transparent shadow-none">
@@ -70,9 +123,7 @@ export function SelectedPlayersPane() {
                   <TableCell>{player.sourceType}</TableCell>
                   <TableCell>{player.totalScore ?? "-"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {[player.qb, player.wr, player.slot, player.rusher]
-                      .filter(Boolean)
-                      .join(" • ")}
+                    {formatPositions(player) || "-"}
                   </TableCell>
                 </TableRow>
               ))}

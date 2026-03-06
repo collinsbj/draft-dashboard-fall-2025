@@ -1,4 +1,4 @@
-export type UploadTableType = "qbs" | "returningPlayers" | "rookies";
+export type UploadTableType = "qbs" | "players";
 
 export type SpreadsheetColumnMap = Record<string, string>;
 
@@ -52,14 +52,17 @@ export const RETURNING_AND_ROOKIE_COLUMN_MAP: SpreadsheetColumnMap = {
   "Last Name": "lastName",
   "Jersey Size": "jerseySize",
   Bucket: "bucket",
+  "Final Bucket": "bucket",
   Group: "group",
+  "Date of Birth": "dateOfBirth",
+  "Mobile Number": "mobileNumber",
+  "Account Email": "accountEmail",
 };
 
 export const UPLOAD_COLUMN_MAPS: Record<UploadTableType, SpreadsheetColumnMap> =
   {
     qbs: QB_COLUMN_MAP,
-    returningPlayers: RETURNING_AND_ROOKIE_COLUMN_MAP,
-    rookies: RETURNING_AND_ROOKIE_COLUMN_MAP,
+    players: RETURNING_AND_ROOKIE_COLUMN_MAP,
   };
 
 const TRUE_VALUES = new Set(["yes", "true", "y", "1"]);

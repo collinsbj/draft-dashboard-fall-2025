@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type UploadTableType = "qbs" | "returningPlayers" | "rookies";
+type UploadTableType = "qbs" | "players";
 
 type UploadSpreadsheetDialogProps = {
   defaultTableType?: UploadTableType;
@@ -32,8 +32,7 @@ type UploadSpreadsheetDialogProps = {
 
 const TABLE_OPTIONS: Array<{ value: UploadTableType; label: string }> = [
   { value: "qbs", label: "QBs" },
-  { value: "returningPlayers", label: "Returning Players" },
-  { value: "rookies", label: "Rookies" },
+  { value: "players", label: "Returning Players / Rookies" },
 ];
 
 export function UploadSpreadsheetDialog({
@@ -67,9 +66,15 @@ export function UploadSpreadsheetDialog({
         throw new Error(data?.error ?? "Upload failed");
       }
 
-      toast.success(
-        `Upload complete: ${data.addedOrUpdated} rows synced, ${data.removed} removed.`
-      );
+      if (data.returning && data.rookies) {
+        toast.success(
+          `Upload complete: ${data.returning.addedOrUpdated} returning + ${data.rookies.addedOrUpdated} rookies synced.`,
+        );
+      } else {
+        toast.success(
+          `Upload complete: ${data.addedOrUpdated} rows synced, ${data.removed} removed.`,
+        );
+      }
       setOpen(false);
       setFile(null);
       onUploaded?.();

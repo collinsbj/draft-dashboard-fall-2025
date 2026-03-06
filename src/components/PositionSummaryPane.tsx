@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useReturningPlayers } from "@/app/hooks/useReturningPlayers";
 import { useRookies } from "@/app/hooks/useRookies";
+import { useQbs } from "@/app/hooks/useQbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -33,14 +34,29 @@ const positions: Array<{ label: string; key: PositionKey }> = [
   { label: "Linebacker", key: "linebacker" },
 ];
 
+type SummaryPlayer = {
+  selected: boolean;
+  womens: boolean;
+  offDefCaptainInterest: string | null;
+  socialCaptainInterest: boolean;
+  [key: string]: unknown;
+};
+
 export function PositionSummaryPane() {
   const { returningPlayers, isLoadingReturningPlayers } = useReturningPlayers();
   const { rookies, isLoadingRookies } = useRookies();
-  const selected = useMemo(
-    () => [...returningPlayers, ...rookies].filter((player) => player.selected),
-    [returningPlayers, rookies]
-  );
-  const isLoading = isLoadingReturningPlayers || isLoadingRookies;
+  const { qbs, isLoadingQbs } = useQbs();
+
+  const selected = useMemo<SummaryPlayer[]>(() => {
+    const players: SummaryPlayer[] = [...returningPlayers, ...rookies].filter(
+      (player) => player.selected,
+    );
+    const selectedQb = qbs.find((q) => q.selected);
+    if (selectedQb) players.push(selectedQb);
+    return players;
+  }, [returningPlayers, rookies, qbs]);
+
+  const isLoading = isLoadingReturningPlayers || isLoadingRookies || isLoadingQbs;
 
   const getPositionCounts = (key: PositionKey) => {
     const preferred = selected.filter((player) => player[key] === "Preferred").length;

@@ -38,10 +38,15 @@ function readStorage<T extends Record<string, unknown>>(
   }
 }
 
+const SYNC_EVENT = "local-draft-state-change";
+
 function writeStorage(storageKey: string, data: Record<number, unknown>): void {
   if (!STORAGE_AVAILABLE) return;
   try {
     window.localStorage.setItem(storageKey, JSON.stringify(data));
+    window.dispatchEvent(
+      new CustomEvent(SYNC_EVENT, { detail: { key: storageKey } }),
+    );
   } catch {
     // Quota exceeded — silently ignore; in-memory state still works
   }
@@ -84,16 +89,24 @@ export function useLocalDraftState<T extends Record<string, unknown>>(
     setStateMap((prev) => pruneAndDefault(prev, dbIdSet.current, defaults));
   }, [dbIds, defaults]);
 
-  // Cross-tab sync
   useEffect(() => {
     if (!STORAGE_AVAILABLE) return;
-    const handler = (event: StorageEvent) => {
-      if (event.key !== storageKey) return;
+    const reload = () => {
       const stored = readStorage<T>(storageKey, defaults);
       setStateMap(pruneAndDefault(stored, dbIdSet.current, defaults));
     };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === storageKey) reload();
+    };
+    const onSync = (event: Event) => {
+      if ((event as CustomEvent).detail?.key === storageKey) reload();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(SYNC_EVENT, onSync);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(SYNC_EVENT, onSync);
+    };
   }, [storageKey, defaults]);
 
   const getState = useCallback(

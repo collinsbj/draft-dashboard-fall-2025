@@ -55,10 +55,16 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
   Columns3,
+  Filter,
   GripVertical,
   Info,
   RefreshCw,
@@ -130,6 +136,15 @@ export type DraftTableRow = {
   [key: string]: unknown;
 };
 
+export type PositionFilterColumn = {
+  key: string;
+  label: string;
+};
+
+type PositionFilters = Record<string, Set<string>>;
+
+const POSITION_PREFERENCE_VALUES = ["Preferred", "Willing"] as const;
+
 type DraftDataTableProps<T extends DraftTableRow> = {
   tableId: string;
   title: string;
@@ -147,6 +162,7 @@ type DraftDataTableProps<T extends DraftTableRow> = {
   defaultHideRejected?: boolean;
   draftTotal?: number;
   rightActions?: React.ReactNode;
+  positionFilterColumns?: PositionFilterColumn[];
 };
 
 const CONTROL_COLUMN_IDS = new Set(["__drag", "__compare"]);
@@ -228,8 +244,10 @@ export function DraftDataTable<T extends DraftTableRow>({
   defaultHideRejected = false,
   draftTotal,
   rightActions,
+  positionFilterColumns,
 }: DraftDataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [positionFilters, setPositionFilters] = useState<PositionFilters>({});
   const [columnPinning, setColumnPinning] = useState<ColumnPinningState>({
     left: ["name"],
   });
@@ -279,6 +297,14 @@ export function DraftDataTable<T extends DraftTableRow>({
     );
   }, [columnVisibility, visibilityStorageKey]);
 
+  const activePositionFilters = useMemo(
+    () =>
+      Object.entries(positionFilters).filter(
+        ([, values]) => values.size > 0,
+      ),
+    [positionFilters],
+  );
+
   const filteredRows = useMemo(() => {
     const needle = searchValue.trim().toLowerCase();
     return orderedRows.filter((row) => {
@@ -286,10 +312,22 @@ export function DraftDataTable<T extends DraftTableRow>({
       if (hideSelected && row.selected) return false;
       if (hideRejected && row.rejected) return false;
 
+      for (const [key, allowedValues] of activePositionFilters) {
+        const cellValue = String(row[key] ?? "");
+        if (!allowedValues.has(cellValue)) return false;
+      }
+
       if (!needle) return true;
       return row.displayName.toLowerCase().includes(needle);
     });
-  }, [orderedRows, hideDrafted, hideSelected, hideRejected, searchValue]);
+  }, [
+    orderedRows,
+    hideDrafted,
+    hideSelected,
+    hideRejected,
+    searchValue,
+    activePositionFilters,
+  ]);
 
   const draftedCount = data.filter(
     (row) => Boolean(row.drafted) || Boolean(row.selected),
@@ -360,30 +398,35 @@ export function DraftDataTable<T extends DraftTableRow>({
     setHideDrafted(defaultHideDrafted);
     setHideSelected(defaultHideSelected);
     setHideRejected(defaultHideRejected);
+    setPositionFilters({});
     setSorting([]);
   };
 
-  const handleColumnDragEnd = (event: DragEndEvent) => {
+  const columnIdSet = useMemo(
+    () => new Set(visibleColumnIds),
+    [visibleColumnIds],
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    setColumnOrder((current) => {
-      const oldIndex = current.length
-        ? current.indexOf(String(active.id))
-        : visibleColumnIds.indexOf(String(active.id));
-      const newIndex = current.length
-        ? current.indexOf(String(over.id))
-        : visibleColumnIds.indexOf(String(over.id));
-      if (oldIndex < 0 || newIndex < 0) return current;
-      const base = current.length ? current : visibleColumnIds;
-      return arrayMove(base, oldIndex, newIndex);
-    });
-  };
+    if (columnIdSet.has(String(active.id))) {
+      setColumnOrder((current) => {
+        const oldIndex = current.length
+          ? current.indexOf(String(active.id))
+          : visibleColumnIds.indexOf(String(active.id));
+        const newIndex = current.length
+          ? current.indexOf(String(over.id))
+          : visibleColumnIds.indexOf(String(over.id));
+        if (oldIndex < 0 || newIndex < 0) return current;
+        const base = current.length ? current : visibleColumnIds;
+        return arrayMove(base, oldIndex, newIndex);
+      });
+      return;
+    }
 
-  const handleRowDragEnd = async (event: DragEndEvent) => {
     if (!canRowReorder) return;
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
 
     const oldIndex = filteredRows.findIndex(
       (row) => String(row.id) === String(active.id),
@@ -399,7 +442,6 @@ export function DraftDataTable<T extends DraftTableRow>({
       sortOrder: index,
     }));
 
-    // Keep row order optimistic in the UI before server sync.
     const nextMap = new Map(reordered.map((row, index) => [row.id, index]));
     setOrderedRows((current) =>
       [...current].sort(
@@ -511,8 +553,78 @@ export function DraftDataTable<T extends DraftTableRow>({
                 size="sm"
                 onClick={() => setHideRejected((value) => !value)}
               >
-                {hideRejected ? "No-Tagged Hidden" : "No-Tagged Visible"}
+                {hideRejected ? "Hiding No'd" : "Showing No'd"}
               </Button>
+            ) : null}
+
+            {positionFilterColumns && positionFilterColumns.length > 0 ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={
+                      activePositionFilters.length > 0 ? "default" : "outline"
+                    }
+                    size="sm"
+                  >
+                    <Filter className="mr-2 size-4" />
+                    Positions
+                    {activePositionFilters.length > 0
+                      ? ` (${activePositionFilters.length})`
+                      : ""}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56">
+                  <div className="space-y-2">
+                    {positionFilterColumns.map((pos) => {
+                      const current = positionFilters[pos.key];
+                      return (
+                        <div
+                          key={pos.key}
+                          className="flex items-center justify-between gap-2"
+                        >
+                          <span className="text-sm">{pos.label}</span>
+                          <div className="flex gap-1">
+                            {POSITION_PREFERENCE_VALUES.map((pref) => {
+                              const active = current?.has(pref) ?? false;
+                              return (
+                                <button
+                                  key={pref}
+                                  type="button"
+                                  onClick={() =>
+                                    setPositionFilters((prev) => {
+                                      const next = new Set(prev[pos.key]);
+                                      if (active) next.delete(pref);
+                                      else next.add(pref);
+                                      return { ...prev, [pos.key]: next };
+                                    })
+                                  }
+                                  className={cn(
+                                    "rounded-full px-2 py-0.5 text-xs font-medium transition-colors",
+                                    active
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-muted text-muted-foreground hover:bg-muted/80",
+                                  )}
+                                >
+                                  {pref === "Preferred" ? "Pref" : "Will"}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {activePositionFilters.length > 0 ? (
+                      <button
+                        type="button"
+                        className="w-full pt-1 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => setPositionFilters({})}
+                      >
+                        Clear all
+                      </button>
+                    ) : null}
+                  </div>
+                </PopoverContent>
+              </Popover>
             ) : null}
 
             <DropdownMenu>
@@ -538,9 +650,14 @@ export function DraftDataTable<T extends DraftTableRow>({
                         column.toggleVisibility(Boolean(checked))
                       }
                     >
-                      {typeof column.columnDef.header === "string"
-                        ? column.columnDef.header
-                        : column.id}
+                      {(
+                        column.columnDef.meta as
+                          | { displayName?: string }
+                          | undefined
+                      )?.displayName ??
+                        (typeof column.columnDef.header === "string"
+                          ? column.columnDef.header
+                          : column.id)}
                     </DropdownMenuCheckboxItem>
                   ))}
               </DropdownMenuContent>
@@ -567,15 +684,10 @@ export function DraftDataTable<T extends DraftTableRow>({
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
-            onDragEnd={handleColumnDragEnd}
+            onDragEnd={handleDragEnd}
           >
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleRowDragEnd}
-            >
-              <Table>
-                <TableHeader className="sticky top-[calc(var(--spacing)*0)] z-20 bg-background/95">
+            <Table>
+              <TableHeader>
                   {table.getHeaderGroups().map((headerGroup) => (
                     <TableRow
                       key={headerGroup.id}
@@ -774,8 +886,7 @@ export function DraftDataTable<T extends DraftTableRow>({
                     ) : null}
                   </SortableContext>
                 </TableBody>
-              </Table>
-            </DndContext>
+            </Table>
           </DndContext>
         </div>
       </CardContent>

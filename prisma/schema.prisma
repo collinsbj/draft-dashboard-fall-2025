@@ -15,7 +15,7 @@ datasource db {
 
 model Qb {
   id                      Int     @id @default(autoincrement())
-  fullName                String  @unique
+  fullName                String
   height                  String?
   pronouns                String?
   womens                  Boolean @default(false)
@@ -81,8 +81,6 @@ model ReturningPlayer {
   whichWeeks              String?
   additionalContext       String?
   otherExperience         String?
-
-  @@unique([firstName, lastName])
 }
 
 model Rookie {
@@ -91,6 +89,9 @@ model Rookie {
   lastName                String
   bucket                  String?
   group                   Int?
+  dateOfBirth             String?
+  mobileNumber            String?
+  accountEmail            String?
   height                  String?
   jerseySize              String?
   pronouns                String?
@@ -119,6 +120,4 @@ model Rookie {
   whichWeeks              String?
   additionalContext       String?
   otherExperience         String?
-
-  @@unique([firstName, lastName])
 }
